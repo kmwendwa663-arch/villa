@@ -1,0 +1,170 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "bannerUrl": { "type": "string" },
+        "followersCount": { "type": "number" },
+        "followingCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A public feed post",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" }
+      },
+      "required": ["authorId", "content", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "A comment on a post",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorId", "content", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A one-on-one chat message",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "chatId": { "type": "string" },
+        "seen": { "type": "boolean" }
+      },
+      "required": ["senderId", "receiverId", "participants", "content", "createdAt", "chatId"]
+    },
+    "Follow": {
+      "title": "Follow",
+      "description": "A follow relationship between users",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followedId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followedId", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification received by a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "comment", "follow", "mention", "follow_request", "follow_accepted", "system"] },
+        "username": { "type": "string" },
+        "avatarInitials": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "text": { "type": "string" },
+        "postId": { "type": "string" },
+        "postThumb": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["userId", "type", "text", "isRead"]
+    },
+    "FollowRequest": {
+      "title": "FollowRequest",
+      "description": "A pending follow request from another user",
+      "type": "object",
+      "properties": {
+        "requesterId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "followerCount": { "type": "number" },
+        "mutualFollow": { "type": "boolean" }
+      },
+      "required": ["requesterId", "receiverId", "createdAt", "displayName"]
+    }
+  },
+  "firestore": {
+    "/notifications/{notifId}": {
+      "schema": "Notification",
+      "description": "Store user system or action notifications"
+    },
+    "/follow_requests/{requestId}": {
+      "schema": "FollowRequest",
+      "description": "Store pending user follow requests"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Store user profiles"
+    },
+    "/users/{userId}/followers/{followerId}": {
+      "schema": "Follow",
+      "description": "Store followers of a user"
+    },
+    "/users/{userId}/following/{followedId}": {
+      "schema": "Follow",
+      "description": "Store users a user is following"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Store public feed posts"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Store comments on posts"
+    },
+    "/posts/{postId}/likes/{userId}": {
+      "schema": { "type": "object", "properties": { "userId": { "type": "string" }, "createdAt": { "type": "string" } } },
+      "description": "Store likes on posts"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Store chat messages between users"
+    },
+    "/users/{userId}/blocks/{blockedId}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "blockedId": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["blockedId", "createdAt"]
+      },
+      "description": "Store users blocked by this user"
+    },
+    "/users/{userId}/saved/{postId}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "savedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["savedAt"]
+      },
+      "description": "Store bookmarks / private saved posts of a user"
+    }
+  }
+}

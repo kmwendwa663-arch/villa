@@ -1,0 +1,8 @@
+{
+  "name": "Meso",
+  "description": "A premium cinematic social experience.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

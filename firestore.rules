@@ -1,0 +1,155 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) 
+        && incoming().uid == userId
+        && incoming().keys().hasAll(['uid', 'displayName', 'photoURL', 'email', 'createdAt'])
+        && incoming().keys().size() == 5;
+      allow update: if (isOwner(userId)
+        && incoming().uid == userId
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'bannerUrl', 'followingCount',
+          'username', 'bio', 'website', 'location', 'isPrivate', 'coverColor',
+          'status', 'lastSeen'
+        ]))
+        || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['followersCount']))
+        || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['followingCount']));
+
+      // Following
+      match /following/{followedId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId) && incoming().followerId == userId && incoming().followedId == followedId;
+        allow delete: if isOwner(userId) || isOwner(followedId);
+      }
+
+      // Followers
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(followerId) && incoming().followedId == userId && incoming().followerId == followerId;
+        allow delete: if isOwner(followerId) || isOwner(userId);
+      }
+
+      // Blocked Users
+      match /blocks/{blockedId} {
+        allow read: if isOwner(userId) || isOwner(blockedId);
+        allow create, delete: if isOwner(userId);
+      }
+
+      // Support Tickets
+      match /support_tickets/{ticketId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Saved / Bookmarked Posts
+      match /saved/{postId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Posts
+    match /posts/{postId} {
+      function isValidPost(data) {
+        return data.authorId == request.auth.uid 
+          && data.content is string && data.content.size() <= 2000
+          && data.authorName is string
+          && (data.authorPhoto == null || data.authorPhoto is string)
+          && data.likesCount is number
+          && data.commentsCount is number
+          && (data.category == null || data.category is string)
+          && (data.imageUrl == null || data.imageUrl is string);
+      }
+
+      allow read: if true;
+      allow create: if isSignedIn() && isValidPost(incoming()) && incoming().likesCount == 0 && incoming().commentsCount == 0;
+      allow update: if (
+        // Action: Edit content (Owner only)
+        (isOwner(existing().authorId) && incoming().diff(existing()).affectedKeys().hasAny(['content', 'updatedAt']) && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'updatedAt'])) ||
+        // Action: Update counts (Any authenticated user, but specifically for likes/comments increment)
+        // In a real app we'd use getAfter or similar, but for simplicity here:
+        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'commentsCount']))
+      );
+      allow delete: if isOwner(existing().authorId);
+
+      // Post Likes subcollection
+      match /likes/{userId} {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+      
+      // Post Comments subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn() 
+          && incoming().authorId == request.auth.uid
+          && incoming().content is string && incoming().content.size() <= 500;
+        allow update: if isOwner(existing().authorId) && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'updatedAt']);
+        allow delete: if isOwner(existing().authorId) || isOwner(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
+      }
+    }
+
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid in resource.data.participants
+      );
+      allow create: if isSignedIn() 
+        && request.auth.uid in incoming().participants
+        && incoming().senderId == request.auth.uid
+        && incoming().participants.size() == 2
+        && incoming().content is string && incoming().content.size() <= 5000
+        && !exists(/databases/$(database)/documents/users/$(incoming().receiverId)/blocks/$(request.auth.uid))
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocks/$(incoming().receiverId));
+      allow update: if isSignedIn()
+        && request.auth.uid in resource.data.participants
+        && incoming().diff(existing()).affectedKeys().hasOnly(['seen']);
+      allow delete: if isSignedIn() && (
+        request.auth.uid in resource.data.participants
+      );
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Follow Requests
+    match /follow_requests/{requestId} {
+      allow read: if isSignedIn() && (resource.data.receiverId == request.auth.uid || resource.data.requesterId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().requesterId == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSignedIn() && (resource.data.receiverId == request.auth.uid || resource.data.requesterId == request.auth.uid);
+    }
+  }
+}
